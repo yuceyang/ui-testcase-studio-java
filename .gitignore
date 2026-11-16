@@ -20,3 +20,5 @@ vite.generated.ts
 dist/
 *.jar
 app.log
+
+release/
