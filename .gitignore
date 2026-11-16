@@ -16,3 +16,7 @@ application-secrets.yml
 # Vaadin generated
 src/main/bundles/
 vite.generated.ts
+
+dist/
+*.jar
+app.log
