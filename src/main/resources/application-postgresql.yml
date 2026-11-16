@@ -1,0 +1,28 @@
+spring:
+  datasource:
+    url: ${QTS_DB_URL:jdbc:postgresql://127.0.0.1:5432/ui_testcase_studio}
+    username: ${QTS_DB_USERNAME:}
+    password: ${QTS_DB_PASSWORD:}
+    hikari:
+      connection-timeout: 5000
+      initialization-fail-timeout: 1
+      # 数据库/容器重启、NAT 掉线会把池里的空闲连接悄悄掐断，下一次写库就撞在提交那一步
+      # （表现为 Unable to commit against JDBC Connection）。定期探活 + 缩短寿命，换掉死连接。
+      max-lifetime: 600000
+      keepalive-time: 120000
+      validation-timeout: 3000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+qts:
+  storage:
+    mode: postgresql

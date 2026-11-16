@@ -1,0 +1,263 @@
+html, body { margin: 0; background: #f3f5f7; color: #20252c; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
+/* 滚动条与分隔条统一变细：默认宽度太占横向空间，三栏界面里尤其明显。 */
+* { scrollbar-width: thin; scrollbar-color: #c2cbd6 #f2f5f8; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: #f2f5f8; }
+*::-webkit-scrollbar-thumb { background: #c2cbd6; border: 2px solid #f2f5f8; border-radius: 4px; }
+*::-webkit-scrollbar-thumb:hover { background: #a6b3c2; }
+*::-webkit-scrollbar-corner { background: #f2f5f8; }
+.qts-app { min-width: 1040px; font-size: 13px; }
+.topbar { padding: 7px 12px; background: #fff; border-bottom: 1px solid #dce1e7; flex-wrap: wrap; }
+.project-bar { gap: 5px; }
+.top-actions { gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+.tool-button { min-height: 29px; padding: 2px 9px; font-size: 12px; border-radius: 4px; }
+.muted, .hint-line { color: #697586; font-size: 12px; }
+.status-badge { border: 1px solid #d3dbe4; background: #f1f4f8; border-radius: 10px; padding: 2px 8px; white-space: nowrap; }
+.pane { background: #e9edf1; }
+.system-bar { width: 100%; padding: 6px; gap: 2px; background: #fff; border-bottom: 1px solid #e2e6eb; }
+.pane > vaadin-combo-box { margin: 0 6px 6px; width: calc(100% - 12px); }
+.tool-panel { background: #fff; border: 1px solid #dce1e7; overflow: hidden; }
+.panel-title { width: 100%; padding: 4px 6px; min-height: 35px; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid #e2e6eb; }
+.panel-title > span:first-child { font-weight: 600; margin-right: auto; }
+/* 不裁标题行：问号说明的浮层要能溢出到右栏上面，否则会被裁成一条窄缝。
+   窄的时候按钮折到第二行，而不是把整栏撑宽（那样分隔条就拉不动了）。 */
+.tree-head { flex-wrap: wrap; overflow: visible; position: relative; z-index: 5; }
+.tree-head > span { white-space: nowrap; }
+.panel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; width: 100%; box-sizing: border-box; padding: 4px 6px; background: #fff; border-bottom: 1px solid #edf0f3; }
+.panel-actions vaadin-button { flex: 0 0 auto; white-space: nowrap; }
+.hint-line { padding: 4px 8px; border-bottom: 1px solid #edf0f3; }
+/* 层级说明收进小问号：平时只占 15px，悬停/聚焦才展开 */
+.help-wrap { position: relative; display: inline-flex; align-items: center; flex: 0 0 auto; }
+.help-dot { width: 15px; height: 15px; line-height: 15px; border-radius: 50%; text-align: center; font-size: 11px;
+            color: #5b6675; background: #eef2f7; border: 1px solid #d3dbe4; cursor: help; user-select: none; outline: none; }
+.help-wrap:hover .help-dot, .help-dot:focus { background: #dbe7ff; color: #1d4ed8; border-color: #b8ccf0; }
+.help-pop { display: none; position: absolute; left: 21px; top: -6px; z-index: 60; width: 340px; padding: 8px 10px;
+            background: #fff; border: 1px solid #d5dce5; border-radius: 6px; box-shadow: 0 8px 24px rgba(15, 23, 42, .16);
+            font-size: 12px; line-height: 1.65; color: #3d4753; white-space: normal; font-weight: 400; }
+.help-pop-line + .help-pop-line { margin-top: 4px; padding-top: 4px; border-top: 1px dashed #edf0f3; }
+.help-wrap:hover .help-pop, .help-dot:focus + .help-pop { display: block; }
+.tree-body { height: 100%; overflow: auto; }
+.ft { padding: 2px 4px 10px; font-size: 12px; user-select: none; box-sizing: border-box; width: 100%; }
+.ft-children { margin-left: 12px; border-left: 1px solid #d9e0e8; padding-left: 8px; }
+.ft-root { margin-left: 0; border-left: 0; padding-left: 2px; }
+.ft-node { position: relative; }
+.ft-row { display: flex; align-items: center; gap: 3px; min-height: 24px; padding: 1px 4px; border-radius: 3px; cursor: default; }
+.ft-row:hover { background: #eef2f7; }
+/* 拖拽排序：行的上/下边缘出现插入线，中间高亮表示挂到该节点下。 */
+.ft-row.drop-before { box-shadow: inset 0 2px 0 #2563eb; }
+.ft-row.drop-after { box-shadow: inset 0 -2px 0 #2563eb; }
+.ft-row.selected { background: #e2edff; box-shadow: inset 2px 0 0 #2563eb; }
+.ft-row.drop-target { outline: 1px dashed #2563eb; background: #eff6ff; }
+.ft-row.dragging { opacity: .45; }
+.ft-chevron { flex: 0 0 12px; width: 12px; text-align: center; color: #7b8794; cursor: pointer; font-size: 11px; }
+.ft-check { flex: 0 0 13px; width: 13px; height: 13px; margin: 0 1px 0 0; }
+.ft-badge { font-size: 10px; line-height: 15px; padding: 0 4px; border-radius: 3px; background: #e8eef7; color: #3f5f8a; white-space: nowrap; }
+.ft-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 层级配色（A 方案：一级一个色相）。结构层越往下越"实"：模块灰蓝 → 一级青 → 二级紫 → 三级琥珀；
+   功能点绿色 = 可执行单元；用例蓝色 = 可点进详情（按链接对待）。 */
+.ft-row[data-kind="root"]   { --ft-color: #1f2937; --ft-chip: #e9edf2; }
+.ft-row[data-kind="module"] { --ft-color: #475569; --ft-chip: #eef2f7; }
+.ft-row[data-kind="title1"] { --ft-color: #0e7490; --ft-chip: #e3f2f6; }
+.ft-row[data-kind="title2"] { --ft-color: #a21caf; --ft-chip: #fdf4ff; }
+.ft-row[data-kind="title3"] { --ft-color: #b45309; --ft-chip: #fbf0dd; }
+.ft-row[data-kind="point"]  { --ft-color: #047857; --ft-chip: #e6f4ee; }
+.ft-row[data-kind="case"]   { --ft-color: #1d4ed8; --ft-chip: #e8effc; }
+.ft-row .ft-label { color: var(--ft-color, #26313d); }
+.ft-row[data-kind="root"] .ft-label { font-weight: 600; }
+.ft-row[data-kind="point"] .ft-label { font-weight: 500; }
+.ft-row[data-kind="case"] .ft-label {
+            cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px;
+            text-underline-offset: 2px; text-decoration-color: rgba(29, 78, 216, .32); }
+.ft-row[data-kind="case"] .ft-label:hover { text-decoration-color: currentColor; }
+/* 类型徽标与行尾统计数跟着层级走：浅底 + 同色文字。 */
+.ft-row .ft-badge { background: var(--ft-chip, #e8eef7); color: var(--ft-color, #3f5f8a); }
+.ft-row .ft-count { background: var(--ft-chip, #eef2f7); color: var(--ft-color, #5b6675); }
+.ft-picker { border: 1px solid #e2e7ee; border-radius: 4px; overflow: auto; background: #fff; }
+/* 移动节点弹框里功能点不能当父级：整行变灰、光标提示不可选（点它会有提示）。
+   移动用例的弹框里功能点正是常用目标，所以那个弹框加 .ft-picker-any 豁免这条。 */
+.ft-picker:not(.ft-picker-any) .ft-row[data-kind="point"] { opacity: .45; cursor: not-allowed; }
+.ft-picker:not(.ft-picker-any) .ft-row[data-kind="point"]:hover { background: transparent; }
+
+/* 功能点树右键菜单：自绘浮层挂在 body 上，不被树的滚动容器裁掉 */
+.ft-menu { position: fixed; z-index: 1200; min-width: 178px; padding: 4px; background: #fff;
+           border: 1px solid #d5dce5; border-radius: 6px; box-shadow: 0 8px 24px rgba(15, 23, 42, .16); font-size: 12.5px; }
+.ft-menu-item { padding: 6px 10px; border-radius: 4px; cursor: pointer; color: #26313d; white-space: nowrap; }
+.ft-menu-item:hover { background: #eef4ff; color: #1d4ed8; }
+.ft-menu-item.disabled, .ft-menu-item.disabled:hover { color: #a8b0ba; background: transparent; cursor: not-allowed; }
+.ft-menu-item.danger { color: #b42318; }
+.ft-menu-item.danger:hover { background: #fdeaea; color: #b42318; }
+.ft-menu-sep { height: 1px; margin: 4px 2px; background: #edf0f3; }
+
+/* 结构整理弹框：每行「节点 ← 现父级 → 新父级」 */
+.repair-rows { width: 100%; max-height: 52vh; overflow: auto; gap: 4px; }
+.repair-row { gap: 8px; padding: 4px 2px; border-bottom: 1px dashed #eef1f5; }
+.repair-name { flex: 0 0 auto; max-width: 190px; overflow: hidden; text-overflow: ellipsis;
+               white-space: nowrap; color: #26313d; font-weight: 600; }
+.repair-arrow { flex: 0 0 auto; color: #8a94a3; font-size: 11.5px; white-space: nowrap; }
+.case-gen-options { padding: 4px 8px; border-bottom: 1px solid #edf0f3; gap: 10px; flex-wrap: wrap; }
+.case-gen-options vaadin-checkbox { font-size: 12px; }
+.qts-tree { font-size: 12px; }
+.qts-tree::part(cell) { min-height: 28px; padding: 2px 6px; }
+.qts-tree::part(node-point) { color: #1d4ed8; }
+.marked-panel { min-height: 115px; background: #fff; }
+.empty-list { color: #7a8491; padding: 20px 8px; text-align: center; }
+.browser-chrome { width: 100%; padding: 5px; gap: 2px; background: #f8fafc; border-bottom: 1px solid #dfe4e9; }
+.browser-canvas { position: relative; width: 100%; height: 100%; min-height: 320px; background: #e2e7ed; overflow: auto; display: flex; align-items: flex-start; justify-content: flex-start; }
+.browser-empty { color: #5f6c7b; gap: 10px; margin: auto; }
+.browser-empty svg { width: 42px; height: 42px; color: #8e9aa8; }
+.mirror-wrap { position: relative; width: 100%; flex: 0 0 auto; line-height: 0; margin: 0 auto; }
+/* 纵向拖拽分隔条时容器变矮，若图片带 max-height 限制会被等比缩小；这里只按宽度缩放。 */
+.browser-image { display: block; width: 100%; max-width: 100%; max-height: none !important; height: auto; user-select: none; cursor: pointer; -webkit-user-drag: none; }
+.mirror-wrap { min-width: 480px; }
+.mark-state { font-size: 11px; color: #6b7280; }
+.mark-state.marked { color: #15803d; font-weight: 600; }
+.browser-image:focus { outline: 2px solid #2f6feb; outline-offset: 2px; }
+.mirror-overlay { position: absolute; inset: 0; pointer-events: none; }
+.mirror-box { position: absolute; box-sizing: border-box; border: 1px dashed rgba(37, 99, 235, .55); background: rgba(37, 99, 235, .05); pointer-events: none; }
+.mirror-box.marked { border: 2px solid #16a34a; background: rgba(22, 163, 74, .10); }
+.mirror-box.selected { border: 2px solid #f59e0b; background: rgba(245, 158, 11, .12); }
+.mirror-marquee { position: absolute; border: 1px dashed #2563eb; background: rgba(37, 99, 235, .12); pointer-events: none; z-index: 5; }
+.mirror-ime { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; }
+.browser-maximized { position: fixed; inset: 60px 0 0; z-index: 10; }
+.case-preview { height: 100%; width: 100%; box-sizing: border-box; padding: 12px; color: #718096; overflow: auto; align-self: stretch; }
+vaadin-button[theme~="tertiary-inline"] { min-width: 24px; }
+vaadin-dialog-overlay::part(overlay) { border-radius: 6px; }
+vaadin-text-field, vaadin-text-area, vaadin-combo-box { font-size: 12px; }
+vaadin-combo-box-overlay::part(overlay) { font-size: 12px; min-width: 280px; }
+vaadin-combo-box-item, vaadin-select-item, vaadin-multi-select-combo-box-item { font-size: 12px; line-height: 1.45; padding: 5px 8px; }
+vaadin-grid { font-size: 12px; }
+vaadin-grid::part(header-cell) { background: #f3f5f8; font-weight: 600; }
+/* 交互元素列表：已入库的行不能再勾，用文字说明代替灰到看不见的复选框。 */
+.el-in-tree { font-size: 11px; color: #94a3b2; white-space: nowrap; }
+/* 框选识别入库后的结果行：新建/复用/忽略多少，点完就能看到 */
+.shot-save-state { font-size: 12px; color: #0f766e; }
+.shot-save-state:empty { display: none; }
+.el-select-head { gap: 2px; }
+.el-select-head vaadin-checkbox, .elements-panel vaadin-grid vaadin-checkbox { opacity: 1; }
+vaadin-split-layout::part(splitter) { background: #dde3ea; }
+/* 默认分隔条 8px 且带 min-width/min-height，只设 width 会被 min-width 顶回来，必须一起压小。 */
+vaadin-split-layout[orientation="horizontal"]::part(splitter) { width: 4px; min-width: 4px; }
+vaadin-split-layout[orientation="vertical"]::part(splitter) { height: 4px; min-height: 4px; }
+vaadin-split-layout::part(handle) { color: #94a3b2; border: 0; }
+vaadin-split-layout[orientation="horizontal"]::part(handle) { width: 6px; height: 16px; }
+vaadin-split-layout[orientation="vertical"]::part(handle) { width: 16px; height: 6px; }
+/* 右栏：三块面板用像素高度 + 可拖分隔条；总高可超过视口，整列靠右栏滚动。 */
+.right-pane { overflow-y: auto; overflow-x: hidden; }
+.right-stack { flex: 0 0 auto; min-height: 100%; padding: 6px; box-sizing: border-box; gap: 0; }
+.browser-panel { flex: 0 0 auto; height: 46vh; min-height: 240px; }
+.elements-panel { flex: 1 1 auto; min-height: 200px; }
+.cases-panel { flex: 1 1 auto; min-height: 260px; align-items: stretch; }
+.right-splitter { flex: 0 0 6px; align-self: stretch; width: 100%; height: 6px; margin: 2px 0;
+                   border-radius: 3px; background: #dde3ea; cursor: row-resize; touch-action: none; }
+.right-splitter:hover, .right-splitter.dragging { background: #9aa8b8; }
+.picked-target { color: #1d4ed8; font-size: 12px; }
+/* 左栏只保留一层外框：树面板本身不再画卡片边框，避免“框套框”。
+   左栏是 flex 项，overflow:visible 时它的最小宽度会被内容（工具栏按钮、长用例名）撑住，
+   分隔条往左就拖不动、只能往右拉；这里给一个小的固定下限，内容自己折行/省略。 */
+.pane.left-pane { background: #fff; overflow: visible; min-width: 180px; }
+.pane.left-pane > .tool-panel { border: 0; border-top: 1px solid #e2e6eb; background: transparent; overflow: visible; min-width: 0; }
+.ft-label { min-width: 0; }
+.tree-body { overflow-x: hidden; }
+.ft-row { min-width: 0; }
+.ft-label { min-width: 0; flex: 0 1 auto; }
+.ft-count { margin-left: 4px; padding: 0 5px; font-size: 10px; line-height: 15px; border-radius: 8px;
+            background: #eef2f7; color: #5b6675; white-space: nowrap; }
+.ft-stats { padding: 4px 8px; border-bottom: 1px solid #edf0f3; color: #4b5563; font-size: 12px;
+            display: flex; flex-wrap: wrap; gap: 10px; }
+.ft-stats b { color: #1d4ed8; font-weight: 600; }
+/* 点选/连选/勾选的范围：和统计条同一行风格，但只在有选中时出现。 */
+.ft-selection { padding: 3px 8px; border-bottom: 1px solid #edf0f3; color: #1d4ed8;
+            background: #f5f8ff; font-size: 12px; }
+@media (max-width: 1300px) { .qts-app { min-width: 980px; } .topbar { gap: 5px; } }
+
+vaadin-dev-tools { display: none !important; }
+.tree-node-row { gap: 5px; min-width: 0; }
+.tree-badge { font-size: 11px; line-height: 16px; padding: 0 5px; border-radius: 3px; background: #e8eef7; color: #3f5f8a; white-space: nowrap; }
+.tree-node-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.case-detail-title { font-size: 15px; font-weight: 600; color: #1f2937; }
+.node-action { margin: 6px 0 4px; }
+/* 交互元素标题栏按钮较多，允许换行，避免最右侧按钮被裁掉 */
+.elements-head { flex-wrap: wrap; row-gap: 4px; }
+
+/* 生成台里每条用例占满一整行：名称（蓝色链接）占剩余宽度，右侧是模块信息、优先级与操作 */
+.case-card { border: 1px solid #e2e7ee; border-radius: 4px; padding: 7px 10px; margin-bottom: 6px; background: #fbfcfe;
+             display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; }
+.case-title { font-weight: 600; color: #26313d; }
+.case-link { flex: 1 1 auto; min-width: 0; font-weight: 600; font-size: 12.5px; color: #1a73e8;
+             text-decoration: none; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.case-link:hover { color: #1257b8; text-decoration: underline; }
+.case-meta { flex: none; font-size: 11px; color: #8a94a3; white-space: nowrap; }
+.case-status { flex: none; font-size: 11px; padding: 1px 6px; border-radius: 8px; background: #eef1f5; color: #5b6675; }
+.case-status.status-pass { background: #e7f6ec; color: #15733a; }
+.case-status.status-fail { background: #fdeaea; color: #b42318; }
+.case-actions { flex: none; margin-top: 0; display: flex; gap: 4px; }
+.shot-library { max-height: 70vh; overflow: auto; }
+.shot-card { border: 1px solid #e2e8f0; border-radius: 4px; padding: 6px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 4px; color: #64748b; font-size: 12px; }
+.shot-card img { border: 1px solid #eef2f6; }
+
+/* 自动建树预览：可改名/改类型/拖拽换父级 */
+.tree-draft-summary { font-size: 12px; color: #4b5563; }
+.tree-draft-scroll { border: 1px solid #e2e7ee; border-radius: 4px; overflow: auto; min-height: 260px; padding: 4px 6px; background: #fff; }
+.tree-draft-rows { width: 100%; }
+.tree-draft-row { gap: 6px; padding: 2px 4px; border-radius: 3px; }
+.tree-draft-row:hover { background: #f2f6fb; }
+.tree-draft-row[v-drag-over-target] { outline: 1px dashed #2563eb; background: #eff6ff; }
+/* 点中的草稿行：用来批量改类型（Ctrl/⌘ 点击多选） */
+.tree-draft-row.picked { background: #e8f0fe; box-shadow: inset 2px 0 0 #2563eb; }
+.draft-pick-bar { gap: 8px; padding: 4px 8px; border: 1px dashed #cddcf5; border-radius: 4px; background: #f8fbff; }
+.draft-handle { cursor: grab; color: #94a3b8; width: 14px; text-align: center; user-select: none; }
+/* 「挂到」：按钮打开功能点树选择落点；落点那一行只读，后面的草稿行按它的层级缩进 */
+.attach-target { justify-content: flex-start; min-width: 260px; max-width: 520px; font-weight: 500;
+                 color: #1d4ed8; background: #f4f8ff; border: 1px solid #cddcf5; }
+.attach-target:hover { background: #e9f1ff; }
+.tree-draft-anchor { background: #f6f9fe; border-left: 2px solid #2563eb; }
+.tree-draft-anchor-name { font-weight: 600; color: #334155; }
+.draft-element { color: #3f5f8a; font-size: 11px; white-space: nowrap; }
+
+/* 用例生成台：按功能点树的形态显示本次新生成的用例（实线缩进） */
+.pending-outline { width: 100%; box-sizing: border-box; }
+.pending-outline-children { margin-left: 12px; border-left: 1px solid #d9e0e8; padding-left: 8px;
+                           box-sizing: border-box; }
+.pending-outline-row { gap: 6px; min-height: 22px; padding: 1px 4px; border-radius: 3px; width: 100%; box-sizing: border-box; min-width: 0; }
+.pending-outline-row:hover { background: #eef2f7; }
+.pending-outline-name { font-size: 12.5px; color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pending-outline-row[data-kind="point"] .pending-outline-name { color: #1d4ed8; }
+.pending-outline-count { flex: none; padding: 0 5px; font-size: 10px; line-height: 15px; border-radius: 8px;
+                         background: #eef2f7; color: #5b6675; white-space: nowrap; }
+.pending-outline-type { flex: none; font-size: 10.5px; color: #94a3b8; white-space: nowrap; }
+.pending-outline-case .case-link { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pending-outline-meta { flex: none; font-size: 11px; color: #94a3b8; white-space: nowrap; }
+.pending-outline-remove { flex: none; min-width: 22px; width: 22px; height: 22px; padding: 0; color: #94a3b8; background: transparent; }
+.pending-outline-remove:hover { color: #b42318; }
+.pending-outline-move { flex: none; min-width: 22px; width: 22px; height: 22px; padding: 0; color: #94a3b8; background: transparent; }
+.pending-outline-move:hover { color: #1d4ed8; }
+
+/* 手动截图框选识别 */
+.shot-picker { position: relative; display: block; width: 100%; line-height: 0; background: #f3f5f7;
+               border: 1px solid #e2e7ee; border-radius: 4px; overflow: auto; max-height: 46vh; }
+/* canvas 跟图片一样高，覆盖层才能盖住被容器裁掉的下半张图 */
+.shot-picker-canvas { position: relative; width: 100%; }
+.shot-picker-image { display: block; width: 100%; height: auto; }
+.shot-picker-overlay { position: absolute; inset: 0; cursor: crosshair; touch-action: none; }
+/* 多选区：不再用「整幅压暗、只留一个洞」的 box-shadow——两个框叠在一起会把对方也压暗 */
+.shot-picker-box { position: absolute; border: 2px solid #2563eb; background: rgba(37, 99, 235, .12); }
+.shot-picker-badge { position: absolute; top: -2px; left: -2px; min-width: 16px; padding: 0 4px;
+                     font-size: 11px; line-height: 16px; text-align: center; color: #fff;
+                     background: #2563eb; border-radius: 3px 0 3px 0; }
+.shot-picker-remove { position: absolute; top: -10px; right: -10px; width: 18px; height: 18px;
+                      padding: 0; border: 0; border-radius: 50%; background: #dc2626; color: #fff;
+                      font-size: 13px; line-height: 18px; cursor: pointer; }
+.shot-picker-remove:hover { background: #b91c1c; }
+.shot-recognize-result { width: 100%; }
+
+/* 最近识别：缩略图 + 元信息 + 打开/删除 */
+.recog-card { display: flex; gap: 12px; align-items: flex-start; padding: 10px; width: 100%;
+              box-sizing: border-box; border: 1px solid #e2e7ee; border-radius: 6px; background: #fff; }
+.recog-preview { flex: none; width: 160px; max-height: 110px; object-fit: contain; object-position: top left;
+                 background: #f3f5f7; border: 1px solid #e2e7ee; border-radius: 4px; }
+.recog-preview-missing { display: flex; align-items: center; justify-content: center; width: 160px; height: 80px;
+                         font-size: 12px; color: #94a3b8; }
+.recog-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.recog-title { font-size: 13.5px; font-weight: 600; color: #1e293b; }
+.recog-hint { font-size: 12px; color: #0f766e; background: #ecfdf5; border-radius: 3px; padding: 2px 6px;
+              overflow: hidden; text-overflow: ellipsis; }

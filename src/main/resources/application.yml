@@ -1,0 +1,55 @@
+spring:
+  application:
+    name: ui-testcase-studio
+  config:
+    import: optional:file:./qts.env[.properties]
+  profiles:
+    active: ${QTS_PROFILE:local}
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 25MB
+
+server:
+  port: ${QTS_PORT:8080}
+  address: ${QTS_HOST:0.0.0.0}
+  shutdown: graceful
+  servlet:
+    session:
+      # 会话不落盘。Vaadin 把整棵组件树（WorkspaceView 实例）放在 HTTP 会话里，
+      # 一旦被 Tomcat 序列化到 SESSIONS.ser，下次启动就会拿着旧类形状去反序列化，
+      # 改一个字段就报 InvalidClassException（class-derived serialVersionUID 变了）。
+      # 本应用没有登录态可保，跨重启恢复会话本来也没意义，直接关掉。
+      persistent: false
+      timeout: 12h
+
+qts:
+  storage:
+    directory: ${QTS_DATA_DIR:./data}
+    auto-create-database: ${QTS_AUTO_CREATE_DB:true}
+  browser:
+    enabled: ${QTS_BROWSER_ENABLED:true}
+    channel: ${QTS_BROWSER_CHANNEL:msedge}
+    headless: ${QTS_BROWSER_HEADLESS:true}
+    idle-timeout: ${QTS_BROWSER_IDLE_TIMEOUT:PT30M}
+  ai:
+    base-url: ${QTS_AI_BASE_URL:}
+    model: ${QTS_AI_MODEL:}
+    api-key: ${QTS_AI_API_KEY:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    com.yuceyang.uitest: INFO
