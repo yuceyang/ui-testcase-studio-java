@@ -4924,7 +4924,11 @@ public class WorkspaceView extends VerticalLayout {
 
     private void forwardMouse(String phase, double x, double y) {
         if (sessionId == null) return;
-        try { workspaceService.mouse(sessionId, phase, x, y); } catch (RuntimeException e) { showError(e); }
+        try {
+            workspaceService.mouse(sessionId, phase, x, y);
+            // 松开后刷新一次镜像，滑块/拖拽的结果能立刻看到；移动过程中不刷新，避免卡顿。
+            if ("up".equals(phase)) refreshMirror();
+        } catch (RuntimeException e) { showError(e); }
     }
 
     private void forwardClick(double x, double y, int button, int clickCount) {
