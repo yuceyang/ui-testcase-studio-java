@@ -138,15 +138,42 @@ public class WorkspaceService {
                 case "down" -> {
                     mouse.move(x, y);
                     mouse.down();
-                    session.page().waitForTimeout(60);
+                    session.page().waitForTimeout(40);
                 }
                 case "move" -> mouse.move(x, y);
                 case "up" -> {
+                    // 松手前先精确落到最终点，再抬起：滑块不会停在最后一次移动的位置上。
                     mouse.move(x, y);
                     mouse.up();
-                    session.page().waitForTimeout(120);
+                    session.page().waitForTimeout(80);
                 }
                 default -> { }
+            }
+            return null;
+        }, Duration.ofSeconds(15));
+    }
+
+    /**
+     * 一批移动点（"x,y;x,y;..."）：客户端把 40~60ms 内的多次 pointermove 合并成一次调用，
+     * 网络往返从「每个点一次」降到「每批一次」，滑块才不会落在指尖后面。
+     * 每个点之间用 steps 补几帧，让目标页看到的轨迹是连续的。
+     */
+    public void mouseBatch(String sessionId, String points) {
+        if (points == null || points.isBlank()) return;
+        BrowserSession session = testSession(sessionId);
+        session.execute(() -> {
+            var mouse = session.page().mouse();
+            for (String pair : points.split(";")) {
+                String[] parts = pair.split(",");
+                if (parts.length != 2) continue;
+                try {
+                    double x = Double.parseDouble(parts[0].trim());
+                    double y = Double.parseDouble(parts[1].trim());
+                    mouse.move(x, y, new Mouse.MoveOptions().setSteps(3));
+                    session.page().waitForTimeout(8);
+                } catch (NumberFormatException ignored) {
+                    // 个别坏点跳过，不影响整段拖动
+                }
             }
             return null;
         }, Duration.ofSeconds(15));

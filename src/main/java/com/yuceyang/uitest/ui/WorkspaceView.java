@@ -191,6 +191,7 @@ public class WorkspaceView extends VerticalLayout {
             @Override public void click(double x, double y, int button, int clickCount) { forwardClick(x, y, button, clickCount); }
             @Override public void wheel(double deltaX, double deltaY) { forwardWheel(deltaX, deltaY); }
             @Override public void mouse(String phase, double x, double y) { forwardMouse(phase, x, y); }
+            @Override public void mouseBatch(String points) { forwardMouseBatch(points); }
             @Override public void key(String key, String text, boolean control, boolean alt, boolean shift) { forwardKey(key, text, control, alt, shift); }
             @Override public void marquee(double x1, double y1, double x2, double y2, boolean additive) { selectByMarquee(x1, y1, x2, y2, additive); }
             @Override public void toggleBox(String elementId) { toggleElementSelection(elementId); }
@@ -4673,10 +4674,22 @@ public class WorkspaceView extends VerticalLayout {
                     return [e.clientX - r.left, e.clientY - r.top];
                 };
 
-                let drag = null, lastMoveAt = 0;
+                let drag = null, pendingMoves = [], flushTimer = null;
                 // 「拖拽交互」开：左键按下/移动/松开原样转发给页面，处理滑块验证码、拖拽排序这类控件；
                 // 关：保持原来的框选元素。
+                // 移动点先在本地攒着，45ms 一批发过去：每个点一次往返会让滑块明显落在指尖后面。
                 const rawMode = () => wrap.classList.contains('mirror-drag-mode');
+                const flushMoves = () => {
+                    flushTimer = null;
+                    if (!pendingMoves.length) return;
+                    const payload = pendingMoves.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(';');
+                    pendingMoves = [];
+                    img.$server.mirrorMouseBatch(payload);
+                };
+                const queueMove = (px, py) => {
+                    pendingMoves.push([px, py]);
+                    if (!flushTimer) flushTimer = setTimeout(flushMoves, 45);
+                };
                 wrap.addEventListener('pointerdown', (e) => {
                     // 取消默认的 mousedown 聚焦：否则刚聚焦隐藏输入框，浏览器又把焦点收回到 body，
                     // 后续键入/粘贴全部落到工作台页面而不是目标页面。
@@ -4689,6 +4702,7 @@ public class WorkspaceView extends VerticalLayout {
                              additive: e.shiftKey, moved: false, raw };
                     try { wrap.setPointerCapture(e.pointerId); } catch (ignored) {}
                     if (raw) {
+                        pendingMoves = [];
                         const [px, py] = pagePoint(e);
                         img.$server.mirrorMouse('down', px, py);
                     }
@@ -4696,11 +4710,8 @@ public class WorkspaceView extends VerticalLayout {
                 wrap.addEventListener('pointermove', (e) => {
                     if (!drag || drag.id !== e.pointerId) return;
                     if (drag.raw) {
-                        const now = Date.now();
-                        if (now - lastMoveAt < 16) return;
-                        lastMoveAt = now;
                         const [px, py] = pagePoint(e);
-                        img.$server.mirrorMouse('move', px, py);
+                        queueMove(px, py);
                         return;
                     }
                     if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 5) return;
@@ -4718,6 +4729,8 @@ public class WorkspaceView extends VerticalLayout {
                     if (drag.raw) {
                         drag = null;
                         const [px, py] = pagePoint(e);
+                        queueMove(px, py);
+                        flushMoves();
                         img.$server.mirrorMouse('up', px, py);
                         return;
                     }
@@ -4744,6 +4757,8 @@ public class WorkspaceView extends VerticalLayout {
                     if (!drag || !drag.raw) return;
                     drag = null;
                     const [px, py] = pagePoint(e);
+                    queueMove(px, py);
+                    flushMoves();
                     img.$server.mirrorMouse('up', px, py);
                 });
                 let dragStartPageX = 0, dragStartPageY = 0;
@@ -4920,6 +4935,11 @@ public class WorkspaceView extends VerticalLayout {
     private void applyMirrorDragMode() {
         if (mirrorWrap.getParent().isEmpty()) return;
         mirrorWrap.getElement().executeJs("this.classList.toggle('mirror-drag-mode', $0)", mirrorDragMode);
+    }
+
+    private void forwardMouseBatch(String points) {
+        if (sessionId == null) return;
+        try { workspaceService.mouseBatch(sessionId, points); } catch (RuntimeException e) { showError(e); }
     }
 
     private void forwardMouse(String phase, double x, double y) {
