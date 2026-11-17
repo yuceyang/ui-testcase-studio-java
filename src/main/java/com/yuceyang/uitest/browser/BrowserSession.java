@@ -127,6 +127,8 @@ public final class BrowserSession implements AutoCloseable {
     }
 
     public Page page() { return page; }
+
+    public BrowserContext context() { return context; }
     /** 当前地址（登录跳转后的真实地址，不一定是用户在地址栏输入的那个）。 */
     public String currentUrl() {
         return read(() -> page.url(), Duration.ofSeconds(10));

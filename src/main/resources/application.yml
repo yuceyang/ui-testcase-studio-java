@@ -35,6 +35,8 @@ qts:
     enabled: ${QTS_BROWSER_ENABLED:true}
     channel: ${QTS_BROWSER_CHANNEL:msedge}
     headless: ${QTS_BROWSER_HEADLESS:true}
+    # 网络需要代理才能访问目标站点时填，例如 http://127.0.0.1:7890
+    proxy: ${QTS_BROWSER_PROXY:}
     idle-timeout: ${QTS_BROWSER_IDLE_TIMEOUT:PT30M}
   ai:
     base-url: ${QTS_AI_BASE_URL:}

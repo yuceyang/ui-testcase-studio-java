@@ -125,6 +125,9 @@ public class WorkspaceView extends VerticalLayout {
     private boolean mirrorDragMode;
     /** CDP 实时画面是否开着（拖拽交互开启且有会话时）。 */
     private boolean mirrorScreencastOn;
+    /** 浏览器里是否已有登录态（Cookie 非空且当前页不像登录页）。 */
+    private boolean loggedIn;
+    private Button loginStateButton;
     /** 拖动过程中镜像刷新的节流：约 100ms 一帧，既能看出滑块在动，又不至于把 UI 线程占满。 */
     private long lastDragMirrorAt;
     /** 拖动中的实时镜像在后台截图，避免截图期间卡住下一批鼠标移动。 */
@@ -481,6 +484,7 @@ public class WorkspaceView extends VerticalLayout {
                 primary("前往", VaadinIcon.PLAY, this::navigate),
                 iconButton("弹出窗口", VaadinIcon.EXTERNAL_LINK, this::openInNewTab),
                 iconButton("最大化浏览器", VaadinIcon.EXPAND_SQUARE, this::maximizeBrowser),
+                loginStateButton(),
                 dragModeButton(),
                 iconButton("缩小", VaadinIcon.MINUS, () -> zoom(-10)),
                 iconButton("重置缩放", VaadinIcon.REFRESH, () -> zoom(0)),
@@ -4678,6 +4682,7 @@ public class WorkspaceView extends VerticalLayout {
         browserImage.setSrc(mirror.image());
         browserImage.setAlt("实时页面");
         applyMirrorDragMode();
+        updateLoginState();
         // 拖动中的每一帧都重画元素框太费，框的位置又不会变，跳过。
         if (drawBoxes) drawOverlay();
     }
@@ -4937,6 +4942,57 @@ public class WorkspaceView extends VerticalLayout {
         elementGrid.getDataProvider().refreshAll();
         syncElementSelectAll();
         drawOverlay();
+    }
+
+    /** 登录态按钮：淡绿色=已登录，灰色=未登录/登录失败；点一下清除 Cookie 与本地存储。 */
+    private Button loginStateButton() {
+        Button button = button("未登录", VaadinIcon.USER, this::clearLoginState);
+        button.getElement().setAttribute("title",
+                "登录成功后这里会变成淡绿色；点击会清除浏览器的 Cookie 与本地存储，回到未登录状态");
+        loginStateButton = button;
+        return button;
+    }
+
+    private void updateLoginState() {
+        if (loginStateButton == null) return;
+        boolean ok = false;
+        if (sessionId != null) {
+            try {
+                String url = address.getValue();
+                int cookies = workspaceService.cookieCount(sessionId, url);
+                String current = workspaceService.currentUrl(sessionId);
+                ok = cookies > 0 && !looksLikeLoginUrl(current);
+            } catch (RuntimeException ignored) {
+                ok = false;
+            }
+        }
+        loggedIn = ok;
+        loginStateButton.setText(ok ? "清除登录态" : "未登录");
+        loginStateButton.getElement().getClassList().set("login-on", ok);
+    }
+
+    /** 登录页通常带这些片段；这类页面上即使有 Cookie（如 JSESSIONID）也不算“登录态”。 */
+    private static boolean looksLikeLoginUrl(String url) {
+        if (url == null || url.isBlank()) return true;
+        String lower = url.toLowerCase();
+        return lower.contains("login") || lower.contains("signin") || lower.contains("authorize")
+                || lower.contains("authserver") || lower.contains("passport");
+    }
+
+    private void clearLoginState() {
+        if (sessionId == null) {
+            Notification.show("请先打开目标系统");
+            return;
+        }
+        try {
+            workspaceService.clearLoginState(sessionId);
+            updateLoginState();
+            // 重新打开当前地址：没有 Cookie 了，站点会回到登录页
+            navigate();
+            Notification.show("已清除登录状态（Cookie / 本地存储），正在重新打开页面");
+        } catch (RuntimeException e) {
+            showError(e);
+        }
     }
 
     /** 浏览器工具条上的「拖拽交互」开关按钮。 */
@@ -5498,6 +5554,7 @@ public class WorkspaceView extends VerticalLayout {
         stopMirrorScreencast();
         if (sessionId != null) workspaceService.closeBrowser(sessionId);
         sessionId = null;
+        updateLoginState();
         sessionSystemId = null;
         sessionEnvironmentId = null;
         zoomPercent = 100;
@@ -5634,11 +5691,15 @@ public class WorkspaceView extends VerticalLayout {
     static String describeFailure(Throwable error) {
         Throwable root = error;
         while (root.getCause() != null && root.getCause() != root) root = root.getCause();
-        String message = root.getMessage();
+        // 浏览器导航失败时我们会在外层给出可读的原因（含 ERR_* 代码），不要退回到 Playwright 的 "Error {"。
+        String message = error instanceof com.yuceyang.uitest.browser.BrowserSessionException
+                ? error.getMessage() : null;
+        if (message == null || message.isBlank()) message = root.getMessage();
         if (message == null || message.isBlank()) message = root.getClass().getSimpleName();
         message = message.lines().findFirst().orElse(message).trim();
         if (message.length() > 300) message = message.substring(0, 300) + "…";
-        String hint = failureHint(message);
+        String hint = error instanceof com.yuceyang.uitest.browser.BrowserSessionException
+                ? "" : failureHint(message);
         return hint.isEmpty() ? message : message + "（" + hint + "）";
     }
 

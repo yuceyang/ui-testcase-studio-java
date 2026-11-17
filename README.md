@@ -182,6 +182,8 @@ The following 1 profile is active: "postgresql"
 - `QTS_BROWSER_CHANNEL=msedge`：优先使用本机 Edge。
 - `QTS_BROWSER_HEADLESS=true`：默认无头运行，页面只显示在工作台镜像里，不额外弹浏览器窗口。改成 `false` 会弹出真实 Edge 窗口，适合需要人工处理验证码/登录的场景。
 - `QTS_BROWSER_IDLE_TIMEOUT=PT30M`
+- `QTS_BROWSER_PROXY=`：需要代理才能访问目标站点时填，例如 `http://127.0.0.1:7890`；导航失败时错误提示里也会提醒这一项。
+- 工具条上的「未登录 / 清除登录态」：浏览器里有 Cookie 且当前页不是登录页时变淡绿色，点一下会清掉 Cookie 与 localStorage/sessionStorage 并重新打开当前地址，避免带着上一次的登录态生成用例。
 
 浏览器镜像接口为后续 Vaadin 技术验证保留。每个会话使用独立浏览器上下文和页面，页面操作串行执行。只允许 HTTP/HTTPS 目标，用于授权测试环境；默认不自动执行增删改业务操作。
 

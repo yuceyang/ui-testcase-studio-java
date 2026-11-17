@@ -104,6 +104,16 @@ public class WorkspaceService {
                 session.pageRevision(), width, height);
     }
 
+    /** 当前地址下的 Cookie 数量：用来判断浏览器里有没有登录态。 */
+    public int cookieCount(String sessionId, String url) {
+        return browsers.cookieCount(sessionId, url);
+    }
+
+    /** 清除登录态（Cookie + localStorage / sessionStorage）。 */
+    public void clearLoginState(String sessionId) {
+        browsers.clearLoginState(sessionId);
+    }
+
     /** 拖动时开启实时画面：帧回调在 Playwright 线程上，调用方需要自己切回 UI 线程。 */
     public void startScreencast(String sessionId, java.util.function.Consumer<String> sink) {
         testSession(sessionId).startScreencast(sink);

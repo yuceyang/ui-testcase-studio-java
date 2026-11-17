@@ -35,7 +35,7 @@ class BrowserStatePersistenceIntegrationTest {
         server.start();
         String base = "http://127.0.0.1:" + server.getAddress().getPort();
         BrowserStateStore store = new BrowserStateStore(dir.toString());
-        BrowserSessionManager manager = new BrowserSessionManager(true, "msedge", true,
+        BrowserSessionManager manager = new BrowserSessionManager(true, "msedge", true, "",
                 Duration.ofMinutes(10), new NetworkLog(), store);
         try {
             BrowserSession first;

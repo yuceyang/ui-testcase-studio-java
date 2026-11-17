@@ -32,6 +32,7 @@ public class BrowserSessionManager {
     private final boolean enabled;
     private final String channel;
     private final boolean headless;
+    private final String proxy;
     private final Duration idleTimeout;
     private final Object lifecycleLock = new Object();
     private final Map<String, BrowserSession> sessions = new ConcurrentHashMap<>();
@@ -43,11 +44,13 @@ public class BrowserSessionManager {
     public BrowserSessionManager(@Value("${qts.browser.enabled}") boolean enabled,
             @Value("${qts.browser.channel}") String channel,
             @Value("${qts.browser.headless}") boolean headless,
+            @Value("${qts.browser.proxy:}") String proxy,
             @Value("${qts.browser.idle-timeout}") Duration idleTimeout,
             NetworkLog networkLog, BrowserStateStore stateStore) {
         this.enabled = enabled;
         this.channel = channel;
         this.headless = headless;
+        this.proxy = proxy;
         this.idleTimeout = idleTimeout;
         this.networkLog = networkLog;
         this.stateStore = stateStore;
@@ -133,7 +136,27 @@ public class BrowserSessionManager {
             Page.NavigateOptions options = new Page.NavigateOptions()
                     .setWaitUntil(WaitUntilState.DOMCONTENTLOADED)
                     .setTimeout(30000);
-            page.navigate(url, options);
+            try {
+                page.navigate(url, options);
+            } catch (PlaywrightException first) {
+                // 只有“连接被重置 / 空响应 / 超时”这类抖动值得重试；域名解析失败、端口拒绝重试也没用。
+                String reason = shortMessage(first);
+                boolean worthRetry = reason.contains("ERR_EMPTY_RESPONSE")
+                        || reason.contains("ERR_CONNECTION_RESET")
+                        || reason.contains("ERR_CONNECTION_CLOSED")
+                        || reason.contains("ERR_NETWORK_CHANGED")
+                        || reason.contains("Timeout");
+                if (worthRetry) {
+                    page.waitForTimeout(600);
+                    try {
+                        page.navigate(url, options);
+                    } catch (PlaywrightException second) {
+                        throw friendlyNavigationError(url, second);
+                    }
+                } else {
+                    throw friendlyNavigationError(url, first);
+                }
+            }
             try {
                 // 单页应用常在 load 之后才渲染，最多再等 4 秒；等不到也继续截当前画面。
                 page.waitForLoadState(LoadState.NETWORKIDLE, new Page.WaitForLoadStateOptions().setTimeout(4000));
@@ -145,6 +168,29 @@ public class BrowserSessionManager {
         rememberUrl(session, landed);
         flushState(session);
         return landed;
+    }
+
+    /** 该地址下当前有多少 Cookie，用来判断“有没有登录态”。 */
+    public int cookieCount(String sessionId, String url) {
+        BrowserSession session = find(sessionId)
+                .orElseThrow(() -> new BrowserSessionException("浏览器会话不存在或已过期", null));
+        if (url == null || url.isBlank()) return 0;
+        return session.execute(() -> session.context().cookies(url).size(), Duration.ofSeconds(8));
+    }
+
+    /** 清掉登录态：Cookie + localStorage / sessionStorage。 */
+    public void clearLoginState(String sessionId) {
+        BrowserSession session = find(sessionId)
+                .orElseThrow(() -> new BrowserSessionException("浏览器会话不存在或已过期", null));
+        session.execute(() -> {
+            session.context().clearCookies();
+            try {
+                session.page().evaluate("() => { try { localStorage.clear(); sessionStorage.clear(); } catch (e) {} }");
+            } catch (PlaywrightException ignored) {
+                // about:blank 等页面没有 storage
+            }
+            return null;
+        }, Duration.ofSeconds(10));
     }
 
     private void rememberUrl(BrowserSession session, String url) {
@@ -214,6 +260,9 @@ public class BrowserSessionManager {
         playwright = Playwright.create();
         BrowserType.LaunchOptions options = new BrowserType.LaunchOptions().setHeadless(headless);
         if (channel != null && !channel.isBlank()) options.setChannel(channel);
+        if (proxy != null && !proxy.isBlank()) {
+            options.setProxy(new com.microsoft.playwright.options.Proxy(proxy.trim()));
+        }
         try {
             browser = playwright.chromium().launch(options);
         } catch (PlaywrightException e) {
@@ -221,6 +270,39 @@ public class BrowserSessionManager {
             playwright = null;
             throw new BrowserSessionException("浏览器启动失败，请确认已安装 Edge 或 Chromium", e);
         }
+    }
+
+    private static BrowserSessionException friendlyNavigationError(String url, PlaywrightException error) {
+        return new BrowserSessionException("无法打开 " + url + "：" + shortMessage(error)
+                + "。常见原因：网络或代理不通（可在 qts.env 配 QTS_BROWSER_PROXY）；"
+                + "目标站点拦截了无头浏览器（可设 QTS_BROWSER_HEADLESS=false）；"
+                + "或页面需要先完成统一认证。", error);
+    }
+
+    private static String shortMessage(PlaywrightException error) {
+        String message = error.getMessage();
+        if (message == null || message.isBlank()) return "网络请求失败";
+        String text;
+        int net = message.indexOf("net::");
+        if (net >= 0) {
+            // Playwright 原文是 "Error { message='net::ERR_... at URL' name='Error stack='..."，
+            // 取 net:: 到行尾 / name= 之间的部分就够读了。
+            int end = message.indexOf('\n', net);
+            text = end > net ? message.substring(net, end) : message.substring(net);
+            int name = text.indexOf(" name=");
+            if (name > 0) text = text.substring(0, name);
+        } else {
+            int start = message.indexOf("message='");
+            if (start >= 0) {
+                int end = message.indexOf('\'', start + 9);
+                text = end > start ? message.substring(start + 9, end) : message.substring(start + 9);
+            } else {
+                text = message;
+            }
+        }
+        text = text.replace("\r", " ").replace("\n", " ").trim();
+        if (text.endsWith("'")) text = text.substring(0, text.length() - 1);
+        return text.length() > 200 ? text.substring(0, 200) : text;
     }
 
     private static void validateHttpUrl(String url) {
