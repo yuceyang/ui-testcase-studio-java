@@ -126,6 +126,32 @@ public class WorkspaceService {
         }, Duration.ofSeconds(15));
     }
 
+    /**
+     * 镜像上的“按住拖动”（滑块验证码、拖拽排序、拖拽上传）：按下/移动/松开分三次转发。
+     * 移动事件很密，客户端已按帧节流；这里每次都是一次会话线程内的顺序操作。
+     */
+    public void mouse(String sessionId, String phase, double x, double y) {
+        BrowserSession session = testSession(sessionId);
+        session.execute(() -> {
+            var mouse = session.page().mouse();
+            switch (phase == null ? "" : phase) {
+                case "down" -> {
+                    mouse.move(x, y);
+                    mouse.down();
+                    session.page().waitForTimeout(60);
+                }
+                case "move" -> mouse.move(x, y);
+                case "up" -> {
+                    mouse.move(x, y);
+                    mouse.up();
+                    session.page().waitForTimeout(120);
+                }
+                default -> { }
+            }
+            return null;
+        }, Duration.ofSeconds(15));
+    }
+
     public void wheel(String sessionId, double deltaX, double deltaY) {
         BrowserSession session = testSession(sessionId);
         session.execute(() -> {

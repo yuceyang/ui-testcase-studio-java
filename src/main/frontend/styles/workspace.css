@@ -117,6 +117,10 @@ html, body { margin: 0; background: #f3f5f7; color: #20252c; font-family: "Micro
 .mirror-box.marked { border: 2px solid #16a34a; background: rgba(22, 163, 74, .10); }
 .mirror-box.selected { border: 2px solid #f59e0b; background: rgba(245, 158, 11, .12); }
 .mirror-marquee { position: absolute; border: 1px dashed #2563eb; background: rgba(37, 99, 235, .12); pointer-events: none; z-index: 5; }
+/* 拖拽交互：光标改成抓手，提示这里按住拖动会操作页面而不是框选。 */
+.mirror-wrap.mirror-drag-mode, .mirror-wrap.mirror-drag-mode .browser-image { cursor: grab; }
+.mirror-wrap.mirror-drag-mode:active, .mirror-wrap.mirror-drag-mode .browser-image:active { cursor: grabbing; }
+.browser-chrome .drag-mode-on { background: #e8f0fe; color: #1d4ed8; box-shadow: inset 0 0 0 1px #93b4f5; }
 .mirror-ime { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; }
 .browser-maximized { position: fixed; inset: 60px 0 0; z-index: 10; }
 .case-preview { height: 100%; width: 100%; box-sizing: border-box; padding: 12px; color: #718096; overflow: auto; align-self: stretch; }

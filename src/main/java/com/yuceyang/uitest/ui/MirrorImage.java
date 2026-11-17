@@ -11,6 +11,8 @@ public class MirrorImage extends Image {
     public interface Handler {
         void click(double x, double y, int button, int clickCount);
         void wheel(double deltaX, double deltaY);
+        /** 原样转发鼠标按下/移动/松开：用于滑块验证码这类必须在真实页面上拖动的控件。 */
+        void mouse(String phase, double x, double y);
         void key(String key, String text, boolean control, boolean alt, boolean shift);
         void marquee(double x1, double y1, double x2, double y2, boolean additive);
         void toggleBox(String elementId);
@@ -32,6 +34,11 @@ public class MirrorImage extends Image {
     @ClientCallable
     public void mirrorWheel(double deltaX, double deltaY) {
         handler.wheel(deltaX, deltaY);
+    }
+
+    @ClientCallable
+    public void mirrorMouse(String phase, double x, double y) {
+        handler.mouse(phase, x, y);
     }
 
     @ClientCallable

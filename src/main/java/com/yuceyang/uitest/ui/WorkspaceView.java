@@ -121,6 +121,9 @@ public class WorkspaceView extends VerticalLayout {
     private final Div mirrorWrap = new Div();
     private final Div mirrorOverlay = new Div();
     private int mirrorWidth = 1440;
+    /** 镜像“拖拽交互”开关：开启后左键拖动原样转发到页面（滑块验证码等），关闭时拖动=框选元素。 */
+    private boolean mirrorDragMode;
+    private Button dragModeButton;
     private int mirrorHeight = 900;
     private final MirrorImage browserImage;
     private final MirrorInput mirrorInput;
@@ -187,6 +190,7 @@ public class WorkspaceView extends VerticalLayout {
         this.browserImage = new MirrorImage(new MirrorImage.Handler() {
             @Override public void click(double x, double y, int button, int clickCount) { forwardClick(x, y, button, clickCount); }
             @Override public void wheel(double deltaX, double deltaY) { forwardWheel(deltaX, deltaY); }
+            @Override public void mouse(String phase, double x, double y) { forwardMouse(phase, x, y); }
             @Override public void key(String key, String text, boolean control, boolean alt, boolean shift) { forwardKey(key, text, control, alt, shift); }
             @Override public void marquee(double x1, double y1, double x2, double y2, boolean additive) { selectByMarquee(x1, y1, x2, y2, additive); }
             @Override public void toggleBox(String elementId) { toggleElementSelection(elementId); }
@@ -463,6 +467,7 @@ public class WorkspaceView extends VerticalLayout {
                 primary("前往", VaadinIcon.PLAY, this::navigate),
                 iconButton("弹出窗口", VaadinIcon.EXTERNAL_LINK, this::openInNewTab),
                 iconButton("最大化浏览器", VaadinIcon.EXPAND_SQUARE, this::maximizeBrowser),
+                dragModeButton(),
                 iconButton("缩小", VaadinIcon.MINUS, () -> zoom(-10)),
                 iconButton("重置缩放", VaadinIcon.REFRESH, () -> zoom(0)),
                 iconButton("放大", VaadinIcon.PLUS, () -> zoom(10)));
@@ -477,7 +482,8 @@ public class WorkspaceView extends VerticalLayout {
         empty.addClassName("browser-empty");
         browserCanvas.add(empty);
         panel.add(chrome, browserCanvas,
-                hint("左键点击 · 右键菜单 · 拖拽框选元素 · 虚线框=未标记 / 绿色=已标记 / 橙色=选中 · Ctrl+点击框可反选"));
+                hint("左键点击 · 右键菜单 · 拖拽框选元素（开「拖拽交互」后改为直接拖动页面，用于滑块验证码/拖拽排序）"
+                        + " · 虚线框=未标记 / 绿色=已标记 / 橙色=选中 · Ctrl+点击框可反选"));
         panel.expand(browserCanvas);
         return panel;
     }
@@ -4643,6 +4649,7 @@ public class WorkspaceView extends VerticalLayout {
         mirrorHeight = Math.max(1, mirror.height());
         browserImage.setSrc(mirror.image());
         browserImage.setAlt("实时页面");
+        applyMirrorDragMode();
         drawOverlay();
     }
 
@@ -4666,7 +4673,10 @@ public class WorkspaceView extends VerticalLayout {
                     return [e.clientX - r.left, e.clientY - r.top];
                 };
 
-                let drag = null;
+                let drag = null, lastMoveAt = 0;
+                // 「拖拽交互」开：左键按下/移动/松开原样转发给页面，处理滑块验证码、拖拽排序这类控件；
+                // 关：保持原来的框选元素。
+                const rawMode = () => wrap.classList.contains('mirror-drag-mode');
                 wrap.addEventListener('pointerdown', (e) => {
                     // 取消默认的 mousedown 聚焦：否则刚聚焦隐藏输入框，浏览器又把焦点收回到 body，
                     // 后续键入/粘贴全部落到工作台页面而不是目标页面。
@@ -4674,11 +4684,25 @@ public class WorkspaceView extends VerticalLayout {
                     focusIme();
                     if (e.button !== 0) return;
                     const [wx, wy] = wrapPoint(e);
-                    drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, wx, wy, additive: e.shiftKey, moved: false };
+                    const raw = rawMode();
+                    drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, wx, wy,
+                             additive: e.shiftKey, moved: false, raw };
                     try { wrap.setPointerCapture(e.pointerId); } catch (ignored) {}
+                    if (raw) {
+                        const [px, py] = pagePoint(e);
+                        img.$server.mirrorMouse('down', px, py);
+                    }
                 });
                 wrap.addEventListener('pointermove', (e) => {
                     if (!drag || drag.id !== e.pointerId) return;
+                    if (drag.raw) {
+                        const now = Date.now();
+                        if (now - lastMoveAt < 16) return;
+                        lastMoveAt = now;
+                        const [px, py] = pagePoint(e);
+                        img.$server.mirrorMouse('move', px, py);
+                        return;
+                    }
                     if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 5) return;
                     drag.moved = true;
                     const [wx, wy] = wrapPoint(e);
@@ -4691,6 +4715,12 @@ public class WorkspaceView extends VerticalLayout {
                 });
                 wrap.addEventListener('pointerup', (e) => {
                     if (!drag || drag.id !== e.pointerId) return;
+                    if (drag.raw) {
+                        drag = null;
+                        const [px, py] = pagePoint(e);
+                        img.$server.mirrorMouse('up', px, py);
+                        return;
+                    }
                     const wasDrag = drag.moved, additive = drag.additive;
                     drag = null;
                     wrap.querySelector('.mirror-marquee')?.remove();
@@ -4709,6 +4739,12 @@ public class WorkspaceView extends VerticalLayout {
                         return;
                     }
                     img.$server.mirrorClick(x, y, 0, 1);
+                });
+                wrap.addEventListener('pointercancel', (e) => {
+                    if (!drag || !drag.raw) return;
+                    drag = null;
+                    const [px, py] = pagePoint(e);
+                    img.$server.mirrorMouse('up', px, py);
                 });
                 let dragStartPageX = 0, dragStartPageY = 0;
                 wrap.addEventListener('pointerdown', (e) => {
@@ -4858,6 +4894,37 @@ public class WorkspaceView extends VerticalLayout {
         elementGrid.getDataProvider().refreshAll();
         syncElementSelectAll();
         drawOverlay();
+    }
+
+    /** 浏览器工具条上的「拖拽交互」开关按钮。 */
+    private Button dragModeButton() {
+        Button button = button("拖拽交互", VaadinIcon.HAND, this::toggleMirrorDragMode);
+        button.getElement().setAttribute("title",
+                "开启后：在镜像里按住左键拖动会直接操作页面（滑块验证码、拖拽排序）；关闭时拖动是框选元素");
+        dragModeButton = button;
+        return button;
+    }
+
+    private void toggleMirrorDragMode() {
+        mirrorDragMode = !mirrorDragMode;
+        if (dragModeButton != null) {
+            dragModeButton.setText(mirrorDragMode ? "拖拽交互：开" : "拖拽交互");
+            dragModeButton.getElement().getClassList().set("drag-mode-on", mirrorDragMode);
+        }
+        applyMirrorDragMode();
+        Notification.show(mirrorDragMode
+                ? "拖拽交互已开启：按住左键拖动会直接操作页面（滑块验证码可用）；再点一次恢复框选"
+                : "拖拽交互已关闭：拖动恢复为框选元素");
+    }
+
+    private void applyMirrorDragMode() {
+        if (mirrorWrap.getParent().isEmpty()) return;
+        mirrorWrap.getElement().executeJs("this.classList.toggle('mirror-drag-mode', $0)", mirrorDragMode);
+    }
+
+    private void forwardMouse(String phase, double x, double y) {
+        if (sessionId == null) return;
+        try { workspaceService.mouse(sessionId, phase, x, y); } catch (RuntimeException e) { showError(e); }
     }
 
     private void forwardClick(double x, double y, int button, int clickCount) {
