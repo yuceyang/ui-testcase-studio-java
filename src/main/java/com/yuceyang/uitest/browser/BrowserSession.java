@@ -1,6 +1,8 @@
 package com.yuceyang.uitest.browser;
 
+import com.google.gson.JsonObject;
 import com.microsoft.playwright.BrowserContext;
+import com.microsoft.playwright.CDPSession;
 import com.microsoft.playwright.Page;
 import com.yuceyang.uitest.screenshot.ScreenshotBinding;
 import java.nio.file.Files;
@@ -28,6 +30,11 @@ public final class BrowserSession implements AutoCloseable {
     private final AtomicLong revision = new AtomicLong();
     private volatile Instant lastAccessedAt = Instant.now();
     private volatile boolean closed;
+    // 拖动时的实时画面：CDP screencast 由浏览器推帧，比「截图 → base64」快一个数量级。
+    private CDPSession screencast;
+    private java.util.function.Consumer<JsonObject> screencastHandler;
+    private volatile java.util.function.Consumer<String> screencastSink;
+    private volatile long lastScreencastFrameAt;
 
     BrowserSession(String projectId, String systemId, String environmentId, BrowserContext context) {
         this(projectId, systemId, environmentId, context, null);
@@ -140,6 +147,63 @@ public final class BrowserSession implements AutoCloseable {
             Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING);
             return Boolean.TRUE;
         }, Duration.ofSeconds(20), false);
+    }
+
+    /** 开始实时画面推送：每帧是一段 base64 JPEG（不含 data: 前缀）。 */
+    public void startScreencast(java.util.function.Consumer<String> sink) {
+        execute(() -> {
+            stopScreencastInternal();
+            screencastSink = sink;
+            lastScreencastFrameAt = 0;
+            CDPSession session = page.context().newCDPSession(page);
+            screencast = session;
+            JsonObject params = new JsonObject();
+            params.addProperty("format", "jpeg");
+            params.addProperty("quality", 55);
+            var viewport = page.viewportSize();
+            params.addProperty("maxWidth", viewport == null ? 1440 : viewport.width);
+            params.addProperty("maxHeight", viewport == null ? 900 : viewport.height);
+            params.addProperty("everyNthFrame", 1);
+            screencastHandler = event -> {
+                try {
+                    JsonObject ack = new JsonObject();
+                    ack.addProperty("sessionId", event.get("sessionId").getAsInt());
+                    session.send("Page.screencastFrameAck", ack);
+                    long now = System.currentTimeMillis();
+                    if (now - lastScreencastFrameAt < 55) return;   // 约 18 帧/秒上限
+                    lastScreencastFrameAt = now;
+                    var target = screencastSink;
+                    if (target != null) target.accept(event.get("data").getAsString());
+                } catch (RuntimeException ignored) {
+                    // 单帧异常不影响后续帧
+                }
+            };
+            session.on("Page.screencastFrame", screencastHandler);
+            session.send("Page.startScreencast", params);
+            return null;
+        }, Duration.ofSeconds(10));
+    }
+
+    public void stopScreencast() {
+        if (closed) return;
+        try {
+            execute(() -> {
+                stopScreencastInternal();
+                return null;
+            }, Duration.ofSeconds(10));
+        } catch (RuntimeException ignored) {
+            // 会话已经关了就算了
+        }
+    }
+
+    private void stopScreencastInternal() {
+        if (screencast == null) return;
+        try { screencast.send("Page.stopScreencast"); } catch (RuntimeException ignored) { }
+        try { screencast.off("Page.screencastFrame", screencastHandler); } catch (RuntimeException ignored) { }
+        try { screencast.detach(); } catch (RuntimeException ignored) { }
+        screencast = null;
+        screencastHandler = null;
+        screencastSink = null;
     }
 
     public ScreenshotBinding binding() {

@@ -78,17 +78,43 @@ public class WorkspaceService {
     }
 
     public MirrorImage mirror(String sessionId) {
+        return mirror(sessionId, 120, false);
+    }
+
+    /**
+     * @param waitMillis 截图前等页面重绘的时间。普通操作留 120ms；拖动过程中要实时刷新，
+     *                   用 0 直接把当前画面截下来，靠调用的节流控制频率。
+     * @param fastJpeg   拖动中用 JPEG（编码快、体积小），普通刷新用 PNG 保证文字清晰。
+     */
+    public MirrorImage mirror(String sessionId, int waitMillis, boolean fastJpeg) {
         BrowserSession session = testSession(sessionId);
+        var options = new com.microsoft.playwright.Page.ScreenshotOptions()
+                .setType(fastJpeg ? com.microsoft.playwright.options.ScreenshotType.JPEG
+                        : com.microsoft.playwright.options.ScreenshotType.PNG);
+        if (fastJpeg) options.setQuality(60);
         byte[] image = session.read(() -> {
-            // 点击/按键后页面通常还要几十到几百毫秒重绘，先等一小会儿避免截到旧画面。
-            session.page().waitForTimeout(120);
-            return session.page().screenshot();
+            if (waitMillis > 0) session.page().waitForTimeout(waitMillis);
+            return session.page().screenshot(options);
         }, Duration.ofSeconds(20));
         com.microsoft.playwright.options.ViewportSize viewport = session.page().viewportSize();
         int width = viewport == null ? 1440 : viewport.width;
         int height = viewport == null ? 900 : viewport.height;
-        return new MirrorImage("data:image/png;base64," + Base64.getEncoder().encodeToString(image),
+        String mime = fastJpeg ? "image/jpeg" : "image/png";
+        return new MirrorImage("data:" + mime + ";base64," + Base64.getEncoder().encodeToString(image),
                 session.pageRevision(), width, height);
+    }
+
+    /** 拖动时开启实时画面：帧回调在 Playwright 线程上，调用方需要自己切回 UI 线程。 */
+    public void startScreencast(String sessionId, java.util.function.Consumer<String> sink) {
+        testSession(sessionId).startScreencast(sink);
+    }
+
+    public void stopScreencast(String sessionId) {
+        try {
+            testSession(sessionId).stopScreencast();
+        } catch (RuntimeException ignored) {
+            // 会话已关闭
+        }
     }
 
     /** 复用当前会话导航；返回最终 URL（可能发生重定向）。 */

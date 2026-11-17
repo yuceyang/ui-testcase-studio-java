@@ -123,6 +123,19 @@ public class WorkspaceView extends VerticalLayout {
     private int mirrorWidth = 1440;
     /** 镜像“拖拽交互”开关：开启后左键拖动原样转发到页面（滑块验证码等），关闭时拖动=框选元素。 */
     private boolean mirrorDragMode;
+    /** CDP 实时画面是否开着（拖拽交互开启且有会话时）。 */
+    private boolean mirrorScreencastOn;
+    /** 拖动过程中镜像刷新的节流：约 100ms 一帧，既能看出滑块在动，又不至于把 UI 线程占满。 */
+    private long lastDragMirrorAt;
+    /** 拖动中的实时镜像在后台截图，避免截图期间卡住下一批鼠标移动。 */
+    private final java.util.concurrent.ExecutorService dragMirrorExecutor =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread thread = new Thread(r, "drag-mirror");
+                thread.setDaemon(true);
+                return thread;
+            });
+    private final java.util.concurrent.atomic.AtomicBoolean dragMirrorPending =
+            new java.util.concurrent.atomic.AtomicBoolean();
     private Button dragModeButton;
     private int mirrorHeight = 900;
     private final MirrorImage browserImage;
@@ -4607,6 +4620,7 @@ public class WorkspaceView extends VerticalLayout {
             browserStatus.setText("已启动");
             showLandedUrl();
             refreshMirror();
+            if (mirrorDragMode) startMirrorScreencast();
         } catch (RuntimeException e) {
             if (isBrowserClosed(e)) {
                 sessionId = null;
@@ -4631,8 +4645,21 @@ public class WorkspaceView extends VerticalLayout {
     }
 
     private void refreshMirror() {
+        refreshMirror(120);
+    }
+
+    private void refreshMirror(int waitMillis) {
         if (sessionId == null) return;
-        var mirror = workspaceService.mirror(sessionId);
+        applyMirror(workspaceService.mirror(sessionId, waitMillis, false), true);
+    }
+
+    private void applyMirror(com.yuceyang.uitest.project.WorkspaceService.MirrorImage mirror) {
+        applyMirror(mirror, true);
+    }
+
+    private void applyMirror(com.yuceyang.uitest.project.WorkspaceService.MirrorImage mirror,
+                             boolean drawBoxes) {
+        if (mirror == null) return;
         if (mirrorWrap.getParent().isEmpty()) {
             browserImage.addClassName("browser-image");
             // 图片默认可拖拽，会触发 HTML5 drag 并取消 pointer 事件，导致框选永远收不到 pointerup。
@@ -4651,7 +4678,8 @@ public class WorkspaceView extends VerticalLayout {
         browserImage.setSrc(mirror.image());
         browserImage.setAlt("实时页面");
         applyMirrorDragMode();
-        drawOverlay();
+        // 拖动中的每一帧都重画元素框太费，框的位置又不会变，跳过。
+        if (drawBoxes) drawOverlay();
     }
 
     /** 隐藏输入代理 + 镜像上的点击/框选/滚轮事件。 */
@@ -4688,7 +4716,7 @@ public class WorkspaceView extends VerticalLayout {
                 };
                 const queueMove = (px, py) => {
                     pendingMoves.push([px, py]);
-                    if (!flushTimer) flushTimer = setTimeout(flushMoves, 45);
+                    if (!flushTimer) flushTimer = setTimeout(flushMoves, 25);
                 };
                 wrap.addEventListener('pointerdown', (e) => {
                     // 取消默认的 mousedown 聚焦：否则刚聚焦隐藏输入框，浏览器又把焦点收回到 body，
@@ -4927,9 +4955,37 @@ public class WorkspaceView extends VerticalLayout {
             dragModeButton.getElement().getClassList().set("drag-mode-on", mirrorDragMode);
         }
         applyMirrorDragMode();
+        if (mirrorDragMode) startMirrorScreencast(); else stopMirrorScreencast();
         Notification.show(mirrorDragMode
                 ? "拖拽交互已开启：按住左键拖动会直接操作页面（滑块验证码可用）；再点一次恢复框选"
                 : "拖拽交互已关闭：拖动恢复为框选元素");
+    }
+
+    /** 拖动时用 CDP 实时推帧：画面跟手，且不占用鼠标转发的会话线程。 */
+    private void startMirrorScreencast() {
+        if (sessionId == null || mirrorScreencastOn) return;
+        UI ui = UI.getCurrent();
+        try {
+            workspaceService.startScreencast(sessionId, data -> {
+                if (ui == null || data == null) return;
+                ui.access(() -> {
+                    if (mirrorDragMode) browserImage.setSrc("data:image/jpeg;base64," + data);
+                });
+            });
+            mirrorScreencastOn = true;
+        } catch (RuntimeException ignored) {
+            // 推帧失败就退回原来的截图刷新方式
+            mirrorScreencastOn = false;
+        }
+    }
+
+    private void stopMirrorScreencast() {
+        if (!mirrorScreencastOn || sessionId == null) {
+            mirrorScreencastOn = false;
+            return;
+        }
+        mirrorScreencastOn = false;
+        workspaceService.stopScreencast(sessionId);
     }
 
     private void applyMirrorDragMode() {
@@ -4939,7 +4995,37 @@ public class WorkspaceView extends VerticalLayout {
 
     private void forwardMouseBatch(String points) {
         if (sessionId == null) return;
-        try { workspaceService.mouseBatch(sessionId, points); } catch (RuntimeException e) { showError(e); }
+        try {
+            workspaceService.mouseBatch(sessionId, points);
+            if (!mirrorScreencastOn) scheduleDragMirror();
+        } catch (RuntimeException e) { showError(e); }
+    }
+
+    /**
+     * 拖动过程中的镜像刷新放到后台线程：截图本身要几十毫秒，放在拖动调用里会把下一批
+     * 鼠标移动卡住，看起来就像滑块一顿一顿的。这里只投递任务，UI 线程接着处理移动。
+     */
+    private void scheduleDragMirror() {
+        long now = System.currentTimeMillis();
+        if (now - lastDragMirrorAt < 80) return;
+        lastDragMirrorAt = now;
+        if (!dragMirrorPending.compareAndSet(false, true)) return;
+        String sid = sessionId;
+        dragMirrorExecutor.submit(() -> {
+            try {
+                var snapshot = workspaceService.mirror(sid, 0, true);
+                UI ui = getUI().orElse(null);
+                if (ui != null) {
+                    ui.access(() -> {
+                        if (sid.equals(sessionId)) applyMirror(snapshot, false);
+                    });
+                }
+            } catch (RuntimeException ignored) {
+                // 拖动过程中的单帧截图失败不影响继续拖
+            } finally {
+                dragMirrorPending.set(false);
+            }
+        });
     }
 
     private void forwardMouse(String phase, double x, double y) {
@@ -5409,6 +5495,7 @@ public class WorkspaceView extends VerticalLayout {
     }
 
     private void closeBrowser() {
+        stopMirrorScreencast();
         if (sessionId != null) workspaceService.closeBrowser(sessionId);
         sessionId = null;
         sessionSystemId = null;
